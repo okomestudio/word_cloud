@@ -148,12 +148,13 @@ def get_single_color_func(color):
 
 
 class FontInfo(object):
-    def __init__(self, path, size, box_size, orientation, color):
+    def __init__(self, path, size, box_size, orientation, color, adjust_size=None):
         self.path = path
         self.size = size
         self.box_size = box_size
         self.orientation = orientation
         self.color = color
+        self.adjust_size = adjust_size
 
     _cache = {}
 
@@ -172,12 +173,11 @@ class FontInfo(object):
 
     @classmethod
     def new(cls, draw, word, default_font_path, font_size, orientation,
-            extra_font_paths=None):
+            adjust_size=None, extra_font_paths=None):
         if extra_font_paths:
             font_paths = [default_font_path] * len(word)
             for regexobj, extra_font_path in reversed(extra_font_paths):
                 for m in regexobj.finditer(word):
-                    matched_chars = m.group()
                     for i in range(m.start(), m.end()):
                         font_paths[i] = extra_font_path
             multifonts = any(font_path != default_font_path for font_path
@@ -187,11 +187,21 @@ class FontInfo(object):
 
         if not multifonts:
             font_path = default_font_path
-            font = cls.image_font(font_path, font_size)
+            size = (adjust_size(font_size=font_size,
+                                word=word,
+                                font_path=font_path,
+                                orientation=orientation)
+                    if adjust_size else font_size)
+            font = cls.image_font(font_path, size)
             box_size = draw.textsize(word, font=font)
         else:
-            def get_bounds(buff, current_font):
-                font = cls.image_font(current_font, font_size)
+            def get_bounds(buff, current_font_path):
+                size = (adjust_size(font_size=font_size,
+                                    word=buff,
+                                    font_path=current_font_path,
+                                    orientation=orientation)
+                        if adjust_size else font_size)
+                font = cls.image_font(current_font_path, size)
                 ascent, descent = font.getmetrics()
                 w, h = draw.textsize(buff, font=font)
                 return (w, h), (ascent, descent)
@@ -231,7 +241,8 @@ class FontInfo(object):
 
         if orientation is not None:
             box_size = box_size[::-1]
-        return cls(font_path, font_size, box_size, orientation, "white")
+        return cls(font_path, font_size, box_size, orientation, "white",
+                   adjust_size)
 
 
 def _draw_mask(draw, xy, mask, color, orientation):
@@ -250,12 +261,17 @@ def _draw_text(draw, xy, word, font_info, scale=1):
     y = int(xy[1] * scale)
     box_size = (int(font_info.box_size[0] * scale),
                 int(font_info.box_size[1] * scale))
-    font_size = int(font_info.size * scale)
     color = font_info.color
     orientation = font_info.orientation
+    adjust_size = font_info.adjust_size
 
     if isinstance(font_info.path, str):
-        font = FontInfo.image_font(font_info.path, font_size)
+        size = int(scale * (adjust_size(font_size=font_info.size,
+                                        word=word,
+                                        font_path=font_info.path,
+                                        orientation=orientation)
+                            if adjust_size else font_info.size))
+        font = FontInfo.image_font(font_info.path, size)
         mask = font.getmask(word, draw.fontmode)
     elif isinstance(font_info.path, list):
         if orientation is not None:
@@ -263,9 +279,15 @@ def _draw_text(draw, xy, word, font_info, scale=1):
         mask_draw = ImageDraw.Draw(Image.new('L', box_size, 0))
         pidx = 0
         for idx, font_path, offset in font_info.path:
+            chars = word[pidx:idx]
             offset = (int(offset[0] * scale), int(offset[1] * scale))
-            font = FontInfo.image_font(font_path, font_size)
-            mask_draw.text(offset, word[pidx:idx], fill="white", font=font)
+            size = int(scale * (adjust_size(font_size=font_info.size,
+                                            word=chars,
+                                            font_path=font_path,
+                                            orientation=orientation)
+                                if adjust_size else font_info.size))
+            font = FontInfo.image_font(font_path, size)
+            mask_draw.text(offset, chars, fill="white", font=font)
             pidx = idx
         mask = mask_draw.im
     else:
