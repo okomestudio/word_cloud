@@ -199,7 +199,7 @@ class FontInfo(object):
             def get_bounds(buff, current_font_path):
                 size = (adjust_size(font_size=font_size,
                                     order=order,
-                                    word=buff,
+                                    word=word,
                                     font_path=current_font_path,
                                     orientation=orientation)
                         if adjust_size else font_size)
@@ -286,7 +286,7 @@ def _draw_text(draw, xy, order, word, font_info, scale=1):
             offset = (int(offset[0] * scale), int(offset[1] * scale))
             size = int(scale * (adjust_size(font_size=font_info.size,
                                             order=order,
-                                            word=chars,
+                                            word=word,
                                             font_path=font_path,
                                             orientation=orientation)
                                 if adjust_size else font_info.size))
