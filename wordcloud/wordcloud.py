@@ -172,7 +172,7 @@ class FontInfo(object):
         cls._cache.clear()
 
     @classmethod
-    def new(cls, draw, word, default_font_path, font_size, orientation,
+    def new(cls, draw, order, word, default_font_path, font_size, orientation,
             adjust_size=None, extra_font_paths=None):
         if extra_font_paths:
             font_paths = [default_font_path] * len(word)
@@ -188,6 +188,7 @@ class FontInfo(object):
         if not multifonts:
             font_path = default_font_path
             size = (adjust_size(font_size=font_size,
+                                order=order,
                                 word=word,
                                 font_path=font_path,
                                 orientation=orientation)
@@ -197,6 +198,7 @@ class FontInfo(object):
         else:
             def get_bounds(buff, current_font_path):
                 size = (adjust_size(font_size=font_size,
+                                    order=order,
                                     word=buff,
                                     font_path=current_font_path,
                                     orientation=orientation)
@@ -256,7 +258,7 @@ def _draw_mask(draw, xy, mask, color, orientation):
         draw.draw.draw_bitmap(xy, mask, ink)
 
 
-def _draw_text(draw, xy, word, font_info, scale=1):
+def _draw_text(draw, xy, order, word, font_info, scale=1):
     x = int(xy[0] * scale)
     y = int(xy[1] * scale)
     box_size = (int(font_info.box_size[0] * scale),
@@ -267,6 +269,7 @@ def _draw_text(draw, xy, word, font_info, scale=1):
 
     if isinstance(font_info.path, str):
         size = int(scale * (adjust_size(font_size=font_info.size,
+                                        order=order,
                                         word=word,
                                         font_path=font_info.path,
                                         orientation=orientation)
@@ -282,6 +285,7 @@ def _draw_text(draw, xy, word, font_info, scale=1):
             chars = word[pidx:idx]
             offset = (int(offset[0] * scale), int(offset[1] * scale))
             size = int(scale * (adjust_size(font_size=font_info.size,
+                                            order=order,
                                             word=chars,
                                             font_path=font_path,
                                             orientation=orientation)
@@ -297,14 +301,16 @@ def _draw_text(draw, xy, word, font_info, scale=1):
 
 
 class LayoutItem(object):
-    def __init__(self, word, frequency, font_info, position):
+    def __init__(self, order, word, frequency, font_info, position):
+        self.order = order
         self.word = word
         self.frequency = frequency
         self.font_info = font_info
         self.position = position
 
     def draw_text(self, draw, scale=1):
-        _draw_text(draw, self.position, self.word, self.font_info, scale=scale)
+        _draw_text(draw, self.position, self.order, self.word, self.font_info,
+                   scale=scale)
 
     def recolor(self, color_func, random_state):
         self.font_info.color = color_func(
@@ -470,6 +476,7 @@ class WordCloud(object):
                  colormap=None, normalize_plurals=True, contour_width=0,
                  contour_color='black', repeat=False,
                  include_numbers=False, min_word_length=0,
+                 adjust_size=None,
                  extra_font_paths=None):
         if font_path is None:
             font_path = FONT_PATH
@@ -495,6 +502,7 @@ class WordCloud(object):
         self.max_words = max_words
         self.stopwords = stopwords if stopwords is not None else STOPWORDS
         self.min_font_size = min_font_size
+        self.adjust_size = adjust_size
         self.font_step = font_step
         self.regexp = regexp
         if isinstance(random_state, int):
@@ -539,7 +547,8 @@ class WordCloud(object):
         """
         return self.generate_from_frequencies(frequencies)
 
-    def generate_from_frequencies(self, frequencies, max_font_size=None):  # noqa: C901
+    def generate_from_frequencies(self, frequencies, max_font_size=None,  # noqa: C901
+                                  adjust_size=None):
         """Create a word_cloud from words and frequencies.
 
         Parameters
@@ -555,6 +564,8 @@ class WordCloud(object):
         self
 
         """
+        adjust_size = adjust_size if adjust_size else self.adjust_size
+
         # make sure frequencies are sorted and normalized
         frequencies = sorted(frequencies.items(), key=itemgetter(1), reverse=True)
         if len(frequencies) <= 0:
@@ -637,7 +648,7 @@ class WordCloud(object):
         layout = []
 
         # start drawing grey image
-        for word, freq in frequencies:
+        for order, (word, freq) in enumerate(frequencies):
             if freq == 0:
                 continue
             # select the font size
@@ -653,8 +664,8 @@ class WordCloud(object):
 
             while True:
                 font_info = FontInfo.new(
-                    draw, word, self.font_path, font_size, orientation,
-                    extra_font_paths=self.extra_font_paths)
+                    draw, order, word, self.font_path, font_size, orientation,
+                    adjust_size=adjust_size, extra_font_paths=self.extra_font_paths)
 
                 # find possible places using integral image:
                 result = occupancy.sample_position(
@@ -682,7 +693,7 @@ class WordCloud(object):
             x, y = np.array(result) + self.margin // 2
             position = (x, y)
 
-            layout_item = LayoutItem(word, freq, font_info, position)
+            layout_item = LayoutItem(order, word, freq, font_info, position)
             layout_item.draw_text(draw)
             layout_item.recolor(self.color_func, random_state)
             layout.append(layout_item)
