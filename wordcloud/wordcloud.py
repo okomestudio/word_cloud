@@ -7,20 +7,22 @@
 
 from __future__ import division
 
-import warnings
+import base64
+import colorsys
 import io
 import os
 import re
-import base64
 import sys
-import colorsys
-import matplotlib
-import numpy as np
-from collections import defaultdict, namedtuple
+import warnings
+from collections import defaultdict
+from collections import namedtuple
 from operator import itemgetter
-from random import choice, Random
+from random import Random
+from random import choice
 from xml.sax import saxutils
 
+import matplotlib
+import numpy as np
 from PIL import Image
 from PIL import ImageColor
 from PIL import ImageDraw
@@ -28,11 +30,12 @@ from PIL import ImageFilter
 from PIL import ImageFont
 
 from .query_integral_image import query_integral_image
-from .tokenization import unigrams_and_bigrams, process_tokens
+from .tokenization import process_tokens
+from .tokenization import unigrams_and_bigrams
 
 FILE = os.path.dirname(__file__)
-FONT_PATH = os.environ.get('FONT_PATH', os.path.join(FILE, 'DroidSansMono.ttf'))
-STOPWORDS = set(map(str.strip, open(os.path.join(FILE, 'stopwords')).readlines()))
+FONT_PATH = os.environ.get("FONT_PATH", os.path.join(FILE, "DroidSansMono.ttf"))
+STOPWORDS = set(map(str.strip, open(os.path.join(FILE, "stopwords")).readlines()))
 
 
 class IntegralOccupancyMap(object):
@@ -41,24 +44,27 @@ class IntegralOccupancyMap(object):
         self.width = width
         if mask is not None:
             # the order of the cumsum's is important for speed ?!
-            self.integral = np.cumsum(np.cumsum(255 * mask, axis=1),
-                                      axis=0).astype(np.uint32)
+            self.integral = np.cumsum(np.cumsum(255 * mask, axis=1), axis=0).astype(
+                np.uint32
+            )
         else:
             self.integral = np.zeros((height, width), dtype=np.uint32)
 
     def sample_position(self, size_x, size_y, random_state):
-        return query_integral_image(self.integral, size_x, size_y,
-                                    random_state)
+        return query_integral_image(self.integral, size_x, size_y, random_state)
 
     def update(self, img_array, pos_x, pos_y):
-        partial_integral = np.cumsum(np.cumsum(img_array[pos_x:, pos_y:],
-                                               axis=1), axis=0)
+        partial_integral = np.cumsum(
+            np.cumsum(img_array[pos_x:, pos_y:], axis=1), axis=0
+        )
         # paste recomputed part into old image
         # if x or y is zero it is a bit annoying
         if pos_x > 0:
             if pos_y > 0:
-                partial_integral += (self.integral[pos_x - 1, pos_y:]
-                                     - self.integral[pos_x - 1, pos_y - 1])
+                partial_integral += (
+                    self.integral[pos_x - 1, pos_y:]
+                    - self.integral[pos_x - 1, pos_y - 1]
+                )
             else:
                 partial_integral += self.integral[pos_x - 1, pos_y:]
         if pos_y > 0:
@@ -67,8 +73,14 @@ class IntegralOccupancyMap(object):
         self.integral[pos_x:, pos_y:] = partial_integral
 
 
-def random_color_func(word=None, font_size=None, position=None,
-                      orientation=None, font_path=None, random_state=None):
+def random_color_func(
+    word=None,
+    font_size=None,
+    position=None,
+    orientation=None,
+    font_path=None,
+    random_state=None,
+):
     """Random hue color generation.
 
     Default coloring method. This just picks a random hue with value 80% and
@@ -101,16 +113,20 @@ class colormap_color_func(object):
     >>> WordCloud(color_func=colormap_color_func("magma"))
 
     """
+
     def __init__(self, colormap):
         import matplotlib.pyplot as plt
+
         self.colormap = plt.cm.get_cmap(colormap)
 
-    def __call__(self, word, font_size, position, orientation,
-                 random_state=None, **kwargs):
+    def __call__(
+        self, word, font_size, position, orientation, random_state=None, **kwargs
+    ):
         if random_state is None:
             random_state = Random()
-        r, g, b, _ = np.maximum(0, 255 * np.array(self.colormap(
-            random_state.uniform(0, 1))))
+        r, g, b, _ = np.maximum(
+            0, 255 * np.array(self.colormap(random_state.uniform(0, 1)))
+        )
         return "rgb({:.0f}, {:.0f}, {:.0f})".format(r, g, b)
 
 
@@ -123,12 +139,17 @@ def get_single_color_func(color):
     >>> color_func2 = get_single_color_func('#00b4d2')
     """
     old_r, old_g, old_b = ImageColor.getrgb(color)
-    rgb_max = 255.
-    h, s, v = colorsys.rgb_to_hsv(old_r / rgb_max, old_g / rgb_max,
-                                  old_b / rgb_max)
+    rgb_max = 255.0
+    h, s, v = colorsys.rgb_to_hsv(old_r / rgb_max, old_g / rgb_max, old_b / rgb_max)
 
-    def single_color_func(word=None, font_size=None, position=None,
-                          orientation=None, font_path=None, random_state=None):
+    def single_color_func(
+        word=None,
+        font_size=None,
+        position=None,
+        orientation=None,
+        font_path=None,
+        random_state=None,
+    ):
         """Random color generation.
 
         Additional coloring method. It picks a random value with hue and
@@ -146,13 +167,16 @@ def get_single_color_func(color):
         if random_state is None:
             random_state = Random()
         r, g, b = colorsys.hsv_to_rgb(h, s, random_state.uniform(0.2, 1))
-        return 'rgb({:.0f}, {:.0f}, {:.0f})'.format(r * rgb_max, g * rgb_max,
-                                                    b * rgb_max)
+        return "rgb({:.0f}, {:.0f}, {:.0f})".format(
+            r * rgb_max, g * rgb_max, b * rgb_max
+        )
+
     return single_color_func
 
 
 class BoxSize(object):
     """Bounding box size for a word."""
+
     def __init__(self, w, h):
         self.w = w
         self.h = h
@@ -164,7 +188,7 @@ class BoxSize(object):
         self.w, self.h = self.h, self.w
 
 
-FontOffset = namedtuple('FontOffset', 'start end path x y w h ascent descent')
+FontOffset = namedtuple("FontOffset", "start end path x y w h ascent descent")
 """Stores the info about the font used for the substring in the
 word. Each font used for the word is given a ``FontOffset`` object,
 stored in ``FontInfo.font_offsets``. This object is partly used to
@@ -203,7 +227,7 @@ descent: int
 """
 
 
-MixedFontPattern = namedtuple('MixedFontPattern', 'pattern path')
+MixedFontPattern = namedtuple("MixedFontPattern", "pattern path")
 """Provide the font to be used for the matched substring in the word.
 
 Parameters
@@ -261,19 +285,19 @@ class FontCollection(object):
         # TODO better support for uncommon font styles/weights?
         raw_font_style = raw_font_style.lower()
 
-        if 'bold' in raw_font_style:
-            font_weight = 'bold'
+        if "bold" in raw_font_style:
+            font_weight = "bold"
         else:
-            font_weight = 'normal'
+            font_weight = "normal"
 
-        if 'italic' in raw_font_style:
-            font_style = 'italic'
-        elif 'oblique' in raw_font_style:
-            font_style = 'oblique'
+        if "italic" in raw_font_style:
+            font_style = "italic"
+        elif "oblique" in raw_font_style:
+            font_style = "oblique"
         else:
-            font_style = 'normal'
+            font_style = "normal"
 
-        FontProp = namedtuple('FontProp', 'family weight style')
+        FontProp = namedtuple("FontProp", "family weight style")
         return FontProp(font_family, font_weight, font_style)
 
     @classmethod
@@ -299,25 +323,27 @@ class FontCollection(object):
             ascent, descent = font.getmetrics()
             return (w, h), (ascent, descent)
 
-        buff = ''
+        buff = ""
         offsets = []
         for idx, (c, font_path) in enumerate(zip(word, font_paths)):
-            if buff == '':
+            if buff == "":
                 # init buff
                 buff = c
                 current_font_path = font_path
             elif font_path == current_font_path:
                 buff += c
             else:
-                offsets.append((idx, current_font_path,
-                                get_bounds(buff, current_font_path)))
+                offsets.append(
+                    (idx, current_font_path, get_bounds(buff, current_font_path))
+                )
 
                 # restart buff
                 buff = c
                 current_font_path = font_path
         else:
-            offsets.append((idx + 1, current_font_path,
-                            get_bounds(buff, current_font_path)))
+            offsets.append(
+                (idx + 1, current_font_path, get_bounds(buff, current_font_path))
+            )
 
             max_ascent = max(ascent for _, _, (_, (ascent, _)) in offsets)
 
@@ -381,7 +407,7 @@ class LayoutItem(object):
             position=(self.x, self.y),
             orientation=self.font_info.orientation,
             random_state=random_state,
-            font_path=self.font_info.font_collection.default_font_path
+            font_path=self.font_info.font_collection.default_font_path,
         )
 
 
@@ -413,14 +439,16 @@ class ImageRenderer(Renderer):
             box_size.rotate()
         font_size = int(font_info.size * scale)
 
-        mask_draw = ImageDraw.Draw(Image.new('L', (box_size.w, box_size.h), 0))
+        mask_draw = ImageDraw.Draw(Image.new("L", (box_size.w, box_size.h), 0))
 
         for font_offset in font_info.font_offsets:
             font, _ = font_info.font_collection.image_font(font_offset.path, font_size)
-            mask_draw.text((int(font_offset.x * scale), int(font_offset.y * scale)),
-                           word[font_offset.start:font_offset.end],
-                           fill="white",
-                           font=font)
+            mask_draw.text(
+                (int(font_offset.x * scale), int(font_offset.y * scale)),
+                word[font_offset.start : font_offset.end],
+                fill="white",
+                font=font,
+            )
 
         return mask_draw.im
 
@@ -448,11 +476,13 @@ class ImageRenderer(Renderer):
 class SVGRenderer(Renderer):
     """SVG output renderer."""
 
-    def __init__(self,
-                 word_cloud,
-                 embed_font=False,
-                 optimize_embedded_font=True,
-                 embed_image=False):
+    def __init__(
+        self,
+        word_cloud,
+        embed_font=False,
+        optimize_embedded_font=True,
+        embed_image=False,
+    ):
         super(SVGRenderer, self).__init__(word_cloud)
         self.embed_font = embed_font
         self.optimize_embedded_font = optimize_embedded_font
@@ -466,8 +496,12 @@ class SVGRenderer(Renderer):
 
         # Get max font size
         max_font_size = int(
-            (max(w.font_info.size for w in wc.layout_) if wc.max_font_size is None
-             else self.wc.max_font_size) * scale
+            (
+                max(w.font_info.size for w in wc.layout_)
+                if wc.max_font_size is None
+                else self.wc.max_font_size
+            )
+            * scale
         )
 
         # Text buffer
@@ -478,8 +512,7 @@ class SVGRenderer(Renderer):
             '<svg xmlns="http://www.w3.org/2000/svg"'
             ' width="{}"'
             ' height="{}"'
-            '>'
-            .format(int(wc.width * scale), int(wc.height * scale))
+            ">".format(int(wc.width * scale), int(wc.height * scale))
         )
 
         font_paths = set()
@@ -492,13 +525,10 @@ class SVGRenderer(Renderer):
 
             # Subset options
             options = fontTools.subset.Options(
-
                 # Small impact on character shapes, but reduce size a lot
                 hinting=not self.optimize_embedded_font,
-
                 # On small subsets, can improve size
                 desubroutinize=self.optimize_embedded_font,
-
                 # Try to be lenient
                 ignore_missing_glyphs=True,
             )
@@ -506,7 +536,7 @@ class SVGRenderer(Renderer):
             fonts = defaultdict(set)
             for layout_item in wc.layout_:
                 for font_offset in layout_item.font_info.font_offsets:
-                    for c in layout_item.word[font_offset.start:font_offset.end]:
+                    for c in layout_item.word[font_offset.start : font_offset.end]:
                         fonts[font_offset.path].add(c)
 
             for font_path, characters in fonts.items():
@@ -515,7 +545,7 @@ class SVGRenderer(Renderer):
                 # Load and subset font
                 ttf = fontTools.subset.load_font(font_path, options)
                 subsetter = fontTools.subset.Subsetter(options)
-                text = ''.join(characters)
+                text = "".join(characters)
                 subsetter.populate(text=text)
                 subsetter.subset(ttf)
 
@@ -524,7 +554,7 @@ class SVGRenderer(Renderer):
                 buffer = io.BytesIO()
                 ttf.saveXML(buffer)
                 buffer.seek(0)
-                woff = fontTools.ttLib.TTFont(flavor='woff')
+                woff = fontTools.ttLib.TTFont(flavor="woff")
                 woff.importXML(buffer)
 
                 _, fp = wc.font_collection.image_font(font_path, max_font_size)
@@ -532,64 +562,59 @@ class SVGRenderer(Renderer):
                 # Create stylesheet with embedded font face
                 buffer = io.BytesIO()
                 woff.save(buffer)
-                data = base64.b64encode(buffer.getbuffer()).decode('ascii')
-                url = 'data:application/font-woff;charset=utf-8;base64,' + data
+                data = base64.b64encode(buffer.getbuffer()).decode("ascii")
+                url = "data:application/font-woff;charset=utf-8;base64," + data
                 result.append(
-                    '<style>'
-                    '@font-face{{'
-                    'font-family:{};'
-                    'font-weight:{};'
-                    'font-style:{};'
+                    "<style>"
+                    "@font-face{{"
+                    "font-family:{};"
+                    "font-weight:{};"
+                    "font-style:{};"
                     'src:url("{}")format("woff");'
-                    '}}'
-                    '</style>'
-                    .format(
-                        fp.family,
-                        fp.weight,
-                        fp.style,
-                        url
-                    )
+                    "}}"
+                    "</style>".format(fp.family, fp.weight, fp.style, url)
                 )
 
         # Add background
         if wc.background_color is not None:
             result.append(
-                '<rect'
+                "<rect"
                 ' width="100%"'
                 ' height="100%"'
                 ' style="fill:{}"'
-                '>'
-                '</rect>'
-                .format(wc.background_color)
+                ">"
+                "</rect>".format(wc.background_color)
             )
 
         # Embed image, useful for debug purpose
         if self.embed_image:
             image = self.to_image()
             data = io.BytesIO()
-            image.save(data, format='JPEG')
-            data = base64.b64encode(data.getbuffer()).decode('ascii')
+            image.save(data, format="JPEG")
+            data = base64.b64encode(data.getbuffer()).decode("ascii")
             result.append(
-                '<image'
+                "<image"
                 ' width="100%"'
                 ' height="100%"'
                 ' href="data:image/jpg;base64,{}"'
-                '/>'
-                .format(data)
+                "/>".format(data)
             )
 
         # Gather all the font paths used, if not already computed while embedding
         if not font_paths:
-            font_paths.update(font_offset.path
-                              for layout_item in wc.layout_
-                              for font_offset in layout_item.font_info.font_offsets)
+            font_paths.update(
+                font_offset.path
+                for layout_item in wc.layout_
+                for font_offset in layout_item.font_info.font_offsets
+            )
 
         # Select global style if only one font is used
         if len(font_paths) == 1:
             _, fp = wc.font_collection.image_font(list(font_paths)[0], max_font_size)
             result.append(
-                '<style>text{{font-family:{};font-weight:{};font-style:{};}}</style>'
-                .format(fp.family, fp.weight, fp.style)
+                "<style>text{{font-family:{};font-weight:{};font-style:{};}}</style>".format(
+                    fp.family, fp.weight, fp.style
+                )
             )
             mixed_fonts = False
         else:
@@ -602,8 +627,8 @@ class SVGRenderer(Renderer):
         # TODO draw contour
 
         # Complete SVG file
-        result.append('</svg>')
-        return '\n'.join(result)
+        result.append("</svg>")
+        return "\n".join(result)
 
     def render_layout(self, layout_item, scale, mixed_fonts=False):
         font_info = layout_item.font_info
@@ -621,10 +646,9 @@ class SVGRenderer(Renderer):
                 x += font_offset.y + font_offset.ascent
                 y += font_info.box_size.h - font_offset.x
 
-            transform = 'translate({},{})'.format(int(x * scale),
-                                                  int(y * scale))
+            transform = "translate({},{})".format(int(x * scale), int(y * scale))
             if font_info.orientation is not None:
-                transform += ' rotate(-90)'
+                transform += " rotate(-90)"
 
             params = {
                 "fill": layout_item.color,
@@ -632,29 +656,33 @@ class SVGRenderer(Renderer):
                 "text_length": int(font_offset.w * scale),
                 "transform": transform,
                 "word": saxutils.escape(
-                    layout_item.word[font_offset.start:font_offset.end]
+                    layout_item.word[font_offset.start : font_offset.end]
                 ),
             }
             if mixed_fonts:
                 _, fp = self.wc.font_collection.image_font(font_offset.path, font_size)
-                params.update(font_family=fp.family,
-                              font_style=fp.style,
-                              font_weight=fp.weight)
-                text_prop = ('font-family="{font_family}" '
-                             'font-size="{font_size}" '
-                             'font-style="{font_style}" '
-                             'font-weight="{font_weight}" '
-                             'style="fill:{fill}" '
-                             'textLength="{text_length}" '
-                             'transform="{transform}"')
+                params.update(
+                    font_family=fp.family, font_style=fp.style, font_weight=fp.weight
+                )
+                text_prop = (
+                    'font-family="{font_family}" '
+                    'font-size="{font_size}" '
+                    'font-style="{font_style}" '
+                    'font-weight="{font_weight}" '
+                    'style="fill:{fill}" '
+                    'textLength="{text_length}" '
+                    'transform="{transform}"'
+                )
             else:
-                text_prop = ('font-size="{font_size}" '
-                             'style="fill:{fill}" '
-                             'textLength="{text_length}" '
-                             'transform="{transform}"')
+                text_prop = (
+                    'font-size="{font_size}" '
+                    'style="fill:{fill}" '
+                    'textLength="{text_length}" '
+                    'transform="{transform}"'
+                )
 
             # Create node
-            result.append(('<text ' + text_prop + '>{word}</text>').format(**params))
+            result.append(("<text " + text_prop + ">{word}</text>").format(**params))
 
         return result
 
@@ -807,15 +835,37 @@ class WordCloud(object):
     scaling heuristic.
     """
 
-    def __init__(self, font_path=None, width=400, height=200, margin=2,
-                 ranks_only=None, prefer_horizontal=.9, mask=None, scale=1,
-                 color_func=None, max_words=200, min_font_size=4,
-                 stopwords=None, random_state=None, background_color='black',
-                 max_font_size=None, font_step=1, mode="RGB",
-                 relative_scaling='auto', regexp=None, collocations=True,
-                 colormap=None, normalize_plurals=True, contour_width=0,
-                 contour_color='black', repeat=False,
-                 include_numbers=False, min_word_length=0):
+    def __init__(
+        self,
+        font_path=None,
+        width=400,
+        height=200,
+        margin=2,
+        ranks_only=None,
+        prefer_horizontal=0.9,
+        mask=None,
+        scale=1,
+        color_func=None,
+        max_words=200,
+        min_font_size=4,
+        stopwords=None,
+        random_state=None,
+        background_color="black",
+        max_font_size=None,
+        font_step=1,
+        mode="RGB",
+        relative_scaling="auto",
+        regexp=None,
+        collocations=True,
+        colormap=None,
+        normalize_plurals=True,
+        contour_width=0,
+        contour_color="black",
+        repeat=False,
+        include_numbers=False,
+        min_word_length=0,
+        adjust_size=None,
+    ):
         if color_func is None and colormap is None:
             version = matplotlib.__version__
             if version[0] < "2" and version[2] < "5":
@@ -850,22 +900,27 @@ class WordCloud(object):
         self.random_state = random_state
         self.background_color = background_color
         self.max_font_size = max_font_size
+        self.adjust_size = adjust_size
         self.mode = mode
 
         if relative_scaling == "auto":
             if repeat:
                 relative_scaling = 0
             else:
-                relative_scaling = .5
+                relative_scaling = 0.5
 
         if relative_scaling < 0 or relative_scaling > 1:
-            raise ValueError("relative_scaling needs to be "
-                             "between 0 and 1, got %f." % relative_scaling)
+            raise ValueError(
+                "relative_scaling needs to be "
+                "between 0 and 1, got %f." % relative_scaling
+            )
         self.relative_scaling = relative_scaling
         if ranks_only is not None:
-            warnings.warn("ranks_only is deprecated and will be removed as"
-                          " it had no effect. Look into relative_scaling.",
-                          DeprecationWarning)
+            warnings.warn(
+                "ranks_only is deprecated and will be removed as"
+                " it had no effect. Look into relative_scaling.",
+                DeprecationWarning,
+            )
         self.normalize_plurals = normalize_plurals
         self.repeat = repeat
         self.include_numbers = include_numbers
@@ -887,7 +942,9 @@ class WordCloud(object):
         """
         return self.generate_from_frequencies(frequencies)
 
-    def generate_from_frequencies(self, frequencies, max_font_size=None):  # noqa: C901
+    def generate_from_frequencies(
+        self, frequencies, max_font_size=None, adjust_size=None
+    ):  # noqa: C901
         """Create a word_cloud from words and frequencies.
 
         Parameters
@@ -903,18 +960,21 @@ class WordCloud(object):
         self
 
         """
+        adjust_size = adjust_size if adjust_size else self.adjust_size
+
         # make sure frequencies are sorted and normalized
         frequencies = sorted(frequencies.items(), key=itemgetter(1), reverse=True)
         if len(frequencies) <= 0:
-            raise ValueError("We need at least 1 word to plot a word cloud, "
-                             "got %d." % len(frequencies))
-        frequencies = frequencies[:self.max_words]
+            raise ValueError(
+                "We need at least 1 word to plot a word cloud, "
+                "got %d." % len(frequencies)
+            )
+        frequencies = frequencies[: self.max_words]
 
         # largest entry will be 1
         max_frequency = float(frequencies[0][1])
 
-        frequencies = [(word, freq / max_frequency)
-                       for word, freq in frequencies]
+        frequencies = [(word, freq / max_frequency) for word, freq in frequencies]
 
         if self.random_state is not None:
             random_state = self.random_state
@@ -929,7 +989,7 @@ class WordCloud(object):
         img_array = np.asarray(img_grey)
         renderer = ImageRenderer(self, ImageDraw.Draw(img_grey))
 
-        last_freq = 1.
+        last_freq = 1.0
 
         if max_font_size is None:
             # if not provided use default font_size
@@ -942,13 +1002,13 @@ class WordCloud(object):
                 # we only have one word. We make it big!
                 font_size = self.height
             else:
-                self.generate_from_frequencies(dict(frequencies[:2]),
-                                               max_font_size=self.height)
+                self.generate_from_frequencies(
+                    dict(frequencies[:2]), max_font_size=self.height
+                )
                 # find font sizes
                 sizes = [x.font_info.size for x in self.layout_]
                 try:
-                    font_size = int(2 * sizes[0] * sizes[1]
-                                    / (sizes[0] + sizes[1]))
+                    font_size = int(2 * sizes[0] * sizes[1] / (sizes[0] + sizes[1]))
                 # quick fix for if self.layout_ contains less than 2 values
                 # on very small images it can be empty
                 except IndexError:
@@ -958,7 +1018,8 @@ class WordCloud(object):
                         raise ValueError(
                             "Couldn't find space to draw. Either the Canvas size"
                             " is too small or too much of the image is masked "
-                            "out.")
+                            "out."
+                        )
         else:
             font_size = max_font_size
 
@@ -973,20 +1034,25 @@ class WordCloud(object):
             frequencies_org = list(frequencies)
             downweight = frequencies[-1][1]
             for i in range(times_extend):
-                frequencies.extend([(word, freq * downweight ** (i + 1))
-                                    for word, freq in frequencies_org])
+                frequencies.extend(
+                    [
+                        (word, freq * downweight ** (i + 1))
+                        for word, freq in frequencies_org
+                    ]
+                )
 
         layout = []
 
         # start drawing grey image
-        for word, freq in frequencies:
+        for order, (word, freq) in enumerate(frequencies):
             if freq == 0:
                 continue
             # select the font size
             rs = self.relative_scaling
             if rs != 0:
-                font_size = int(round((rs * (freq / float(last_freq))
-                                       + (1 - rs)) * font_size))
+                font_size = int(
+                    round((rs * (freq / float(last_freq)) + (1 - rs)) * font_size)
+                )
             if random_state.random() < self.prefer_horizontal:
                 orientation = None
             else:
@@ -994,12 +1060,25 @@ class WordCloud(object):
             tried_other_orientation = False
 
             while True:
-                font_info = self.font_collection.pick(word, font_size, orientation)
+                font_info = self.font_collection.pick(
+                    word,
+                    adjust_size(
+                        font_size=font_size,
+                        order=order,
+                        word=word,
+                        orientation=orientation,
+                    )
+                    if adjust_size
+                    else font_size,
+                    orientation,
+                )
 
                 # find possible places using integral image:
-                result = occupancy.sample_position(font_info.box_size.h + self.margin,
-                                                   font_info.box_size.w + self.margin,
-                                                   random_state)
+                result = occupancy.sample_position(
+                    font_info.box_size.h + self.margin,
+                    font_info.box_size.w + self.margin,
+                    random_state,
+                )
 
                 if result is not None or font_size < self.min_font_size:
                     # either we found a place or font-size went too small
@@ -1007,8 +1086,9 @@ class WordCloud(object):
                 # if we didn't find a place, make font smaller
                 # but first try to rotate!
                 if not tried_other_orientation and self.prefer_horizontal < 1:
-                    orientation = (Image.ROTATE_90 if orientation is None else
-                                   Image.ROTATE_90)
+                    orientation = (
+                        Image.ROTATE_90 if orientation is None else Image.ROTATE_90
+                    )
                     tried_other_orientation = True
                 else:
                     font_size -= self.font_step
@@ -1061,16 +1141,18 @@ class WordCloud(object):
 
         stopwords = set([i.lower() for i in self.stopwords])
 
-        flags = (re.UNICODE if sys.version < '3' and type(text) is unicode  # noqa: F821
-                 else 0)
+        flags = (
+            re.UNICODE
+            if sys.version < "3" and type(text) is unicode  # noqa: F821
+            else 0
+        )
         regexp = self.regexp if self.regexp is not None else r"\w[\w']+"
 
         words = re.findall(regexp, text, flags)
         # remove stopwords
         words = [word for word in words if word.lower() not in stopwords]
         # remove 's
-        words = [word[:-2] if word.lower().endswith("'s") else word
-                 for word in words]
+        words = [word[:-2] if word.lower().endswith("'s") else word for word in words]
         # remove numbers
         if not self.include_numbers:
             words = [word for word in words if not word.isdigit()]
@@ -1126,14 +1208,17 @@ class WordCloud(object):
     def _check_generated(self):
         """Check if ``layout_`` was computed, otherwise raise error."""
         if not hasattr(self, "layout_"):
-            raise ValueError("WordCloud has not been calculated, call generate"
-                             " first.")
+            raise ValueError(
+                "WordCloud has not been calculated, call generate" " first."
+            )
 
     def to_image(self):
         self._check_generated()
-        img = Image.new(self.mode, (int(self.width * self.scale),
-                                    int(self.height * self.scale)),
-                        self.background_color)
+        img = Image.new(
+            self.mode,
+            (int(self.width * self.scale), int(self.height * self.scale)),
+            self.background_color,
+        )
         renderer = ImageRenderer(self, ImageDraw.Draw(img))
         renderer.render()
         return self._draw_contour(img=img)
@@ -1261,17 +1346,21 @@ class WordCloud(object):
             Word cloud image as SVG string
         """
         self._check_generated()
-        renderer = SVGRenderer(self,
-                               embed_font=embed_font,
-                               optimize_embedded_font=optimize_embedded_font,
-                               embed_image=embed_image)
+        renderer = SVGRenderer(
+            self,
+            embed_font=embed_font,
+            optimize_embedded_font=optimize_embedded_font,
+            embed_image=embed_image,
+        )
         return renderer.render()
 
     def _get_bolean_mask(self, mask):
         """Cast to two dimensional boolean mask."""
-        if mask.dtype.kind == 'f':
-            warnings.warn("mask image should be unsigned byte between 0"
-                          " and 255. Got a float array")
+        if mask.dtype.kind == "f":
+            warnings.warn(
+                "mask image should be unsigned byte between 0"
+                " and 255. Got a float array"
+            )
         if mask.ndim == 2:
             boolean_mask = mask == 255
         elif mask.ndim == 3:
@@ -1305,7 +1394,7 @@ class WordCloud(object):
 
         # color the contour
         ret = np.array(img) * np.invert(contour)
-        if self.contour_color != 'black':
+        if self.contour_color != "black":
             color = Image.new(img.mode, img.size, self.contour_color)
             ret += np.array(color) * contour
 
